@@ -6,6 +6,9 @@ import { prisma } from "@/lib/prisma";
 // doesn't get duplicated.
 
 export async function GET() {
+
+
+  
   const resources = await prisma.asset.findMany({
     where: { isBookable: true },
     select: { id: true, assetTag: true, name: true, location: true },

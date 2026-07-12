@@ -11,7 +11,10 @@ export async function GET(
 
   if (!Number.isInteger(cycleId) || cycleId <= 0) {
     return NextResponse.json(
-      { error: "invalid_id", message: "Invalid audit cycle id" },
+      {
+        error: "invalid_id",
+        message: "Invalid audit cycle id",
+      },
       { status: 400 }
     );
   }
@@ -22,7 +25,10 @@ export async function GET(
 
   if (!cycle) {
     return NextResponse.json(
-      { error: "not_found", message: "Audit cycle not found" },
+      {
+        error: "not_found",
+        message: "Audit cycle not found",
+      },
       { status: 404 }
     );
   }
@@ -40,9 +46,11 @@ export async function GET(
       : Promise.resolve(null),
   ]);
 
-  const findingByAsset = new Map(findings.map((f) => [f.assetId, f]));
+  const findingByAsset = new Map(
+    findings.map((f: any) => [f.assetId, f])
+  );
 
-  const checklist = assets.map((asset) => ({
+  const checklist = assets.map((asset: any) => ({
     asset,
     finding: findingByAsset.get(asset.id) ?? null,
   }));
