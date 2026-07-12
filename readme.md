@@ -1,18 +1,14 @@
 # AssetFlow
 
-**Enterprise Asset & Resource Management System** — a centralized ERP platform for tracking, allocating, and maintaining physical assets and shared resources (equipment, furniture, vehicles, rooms) across any organization.
+**Enterprise Asset & Resource Management System** — a centralized platform for tracking, allocating, and maintaining physical assets and shared resources (equipment, furniture, vehicles, rooms) across any organization.
 
-Built for [Hackathon Name] — a fully self-hosted, local-first stack with no third-party BaaS.
+Built for [Hackathon Name] in a 6-hour build window — a single self-contained Next.js app, no Docker, no separate backend service.
 
 ---
 
 ## Architecture
 
-The system runs entirely on infrastructure you control: a local PostgreSQL instance (via Docker), a self-hosted Express API with an in-process Socket.IO server for real-time updates, and local disk storage for uploaded files. No Firebase, Supabase, or MongoDB — and no managed cloud database or cache layer.
-
-# Architecture
-
-AssetFlow follows a modular, layered architecture designed around separation of concerns. Each layer has a clearly defined responsibility, allowing the system to remain maintainable, scalable, and secure.
+AssetFlow runs as **one Next.js 15 application** — client, server, and API all in a single process. There is no separate Express service, no Socket.IO server, no Docker, and no Postgres. Data lives in a local SQLite file (`prisma/dev.db`). This is a deliberate scope-down from a larger 4-service architecture to fit a 6-hour, 3-person build: fewer moving parts to wire together during the build means more time on the two features that actually matter for the demo (double-allocation conflict handling, booking overlap prevention).
 
 ---
 
@@ -21,10 +17,6 @@ AssetFlow follows a modular, layered architecture designed around separation of 
 ```mermaid
 flowchart TB
 
-%% =========================
-%% USERS
-%% =========================
-
 subgraph USERS["👥 Users"]
 A1[Administrator]
 A2[Asset Manager]
@@ -32,404 +24,197 @@ A3[Department Head]
 A4[Employee]
 end
 
-%% =========================
-%% FRONTEND
-%% =========================
+subgraph APP["🖥️ Next.js 15 App Router — single process"]
+  subgraph PAGES["Pages / Client Components"]
+    Dashboard
+    OrgSetup["Organization Setup"]
+    Assets
+    Allocation
+    Booking
+    Maintenance
+    Audit
+    Reports
+    Notifications
+  end
 
-subgraph FRONTEND["🖥️ Frontend (Next.js 15 + React + TypeScript)"]
-
-Dashboard
-OrgSetup["Organization Setup"]
-EmployeeDirectory
-Assets
-Allocation
-Booking
-Maintenance
-Audit
-Reports
-Notifications
-Profile
-Settings
-
+  subgraph API["API Route Handlers (app/api/**)"]
+    Routes["Zod-validated route handlers"]
+    AuthLib["NextAuth (Credentials)"]
+  end
 end
 
-%% =========================
-%% API
-%% =========================
-
-subgraph API["⚙️ Express.js REST API"]
-
-Routes
-Controllers
-Services
-Repositories
-Middleware
-
+subgraph STORAGE["💾 Persistence"]
+  Prisma
+  SQLite[(SQLite — dev.db)]
 end
 
-%% =========================
-%% SECURITY
-%% =========================
-
-subgraph SECURITY["🔒 Security Layer"]
-
-JWT
-RBAC["Role-Based Access"]
-Validation["Zod Validation"]
-Bcrypt
-RateLimit["Rate Limiting"]
-ErrorHandling
-
-end
-
-%% =========================
-%% BUSINESS MODULES
-%% =========================
-
-subgraph MODULES["📦 Business Modules"]
-
-Organization
-AssetLifecycle
-AllocationService
-BookingService
-MaintenanceService
-AuditService
-NotificationService
-ReportingService
-ActivityService
-
-end
-
-%% =========================
-%% REALTIME
-%% =========================
-
-subgraph SOCKET["⚡ Socket.IO"]
-
-LiveDashboard
-LiveBooking
-LiveNotifications
-LiveMaintenance
-LiveAudit
-
-end
-
-%% =========================
-%% STORAGE
-%% =========================
-
-subgraph STORAGE["💾 Persistence Layer"]
-
-Prisma
-PostgreSQL[(PostgreSQL)]
-Uploads["Local Upload Storage"]
-
-end
-
-%% Connections
-
-USERS --> FRONTEND
-
-FRONTEND -->|REST API| API
-
-FRONTEND -->|Socket.IO| SOCKET
-
-API --> SECURITY
-
-SECURITY --> MODULES
-
-MODULES --> Prisma
-
-Prisma --> PostgreSQL
-
-MODULES --> Uploads
-
-SOCKET --> MODULES
-
-MODULES --> LiveDashboard
-MODULES --> LiveNotifications
+USERS --> PAGES
+PAGES -->|fetch / mutate + refetch| API
+API --> AuthLib
+API --> Prisma
+Prisma --> SQLite
 ```
+
+No Socket.IO — the UI refetches after a mutation (e.g. after an allocation or booking succeeds) instead of subscribing to live push events. For a 6-hour demo this is materially simpler to build and just as convincing live.
 
 ---
 
-# Layered Architecture
+## Layered Architecture
 
 ```mermaid
 flowchart TB
 
 Client["Client Browser"]
 
-subgraph Presentation
-
-Next["Next.js + React"]
-
-Components["Reusable Components"]
-
-Pages["Pages"]
-
-Forms["Forms"]
-
+subgraph NextApp["Next.js 15 (App Router)"]
+  Components["UI Components / Pages"]
+  RouteHandlers["app/api/**/route.ts (Zod-validated)"]
+  AuthMiddleware["middleware.ts + NextAuth session"]
 end
 
-subgraph Application
-
-Routes
-
-Controllers
-
-Services
-
-Middleware
-
-Validation
-
-SocketIO
-
+subgraph Data["Data Layer"]
+  PrismaClient["Prisma Client (lib/prisma.ts)"]
+  SQLiteFile[("SQLite — ./dev.db")]
 end
 
-subgraph DataAccess
-
-Prisma
-
-Repository
-
-end
-
-subgraph Database
-
-Postgres[(PostgreSQL)]
-
-Uploads
-
-end
-
-Client --> Next
-
-Next --> Routes
-
-Routes --> Controllers
-
-Controllers --> Services
-
-Services --> Validation
-
-Services --> Repository
-
-Repository --> Prisma
-
-Prisma --> Postgres
-
-Services --> Uploads
-
-SocketIO --> Next
+Client --> Components
+Components -->|"fetch()"| RouteHandlers
+RouteHandlers --> AuthMiddleware
+RouteHandlers --> PrismaClient
+PrismaClient --> SQLiteFile
 ```
+
+There's no separate controller/service/repository layering and no rate-limiting middleware — route handlers call Prisma directly, with the two flagship-feature checks (allocation conflict, booking overlap) pulled into small helper functions (`lib/allocations.ts`, `lib/bookings.ts`) rather than a formal service layer.
 
 ---
 
-# Authentication Flow
+## Authentication Flow
 
 ```mermaid
 sequenceDiagram
 
 actor User
-
-participant Frontend
-
-participant API
-
-participant Auth
-
-participant PostgreSQL
+participant Frontend as Next.js Client
+participant NextAuth
+participant SQLite
 
 User->>Frontend: Enter Email & Password
-
-Frontend->>API: POST /auth/login
-
-API->>Auth: Validate Credentials
-
-Auth->>PostgreSQL: Find User
-
-PostgreSQL-->>Auth: User Record
-
-Auth->>Auth: Compare bcrypt Hash
-
-Auth->>Auth: Generate JWT
-
-Auth-->>API: JWT + User Details
-
-API-->>Frontend: Success Response
-
-Frontend-->>User: Dashboard
+Frontend->>NextAuth: signIn("credentials", {...})
+NextAuth->>SQLite: Find user by email
+SQLite-->>NextAuth: User record
+NextAuth->>NextAuth: bcrypt.compare(password, hash)
+NextAuth->>NextAuth: Issue JWT session (role, departmentId)
+NextAuth-->>Frontend: Session established
+Frontend-->>User: Redirect to Dashboard
 ```
+
+Auth is handled by NextAuth's Credentials provider with a JWT session strategy — there's no hand-rolled JWT signing/verification and no separate `/auth/login` route; NextAuth's `[...nextauth]` route handler covers it.
 
 ---
 
-# Asset Allocation Workflow
+## Asset Allocation Workflow (flagship demo #1)
 
 ```mermaid
 flowchart LR
 
-Employee
-
-Request
-
-Validation
-
-Availability
-
-Approval
-
-Allocation
-
-ActivityLog
-
-Database
-
-Socket
-
-Dashboard
-
-Notifications
-
-Employee --> Request
-
-Request --> Validation
-
-Validation --> Availability
-
-Availability --> Approval
-
-Approval --> Allocation
-
-Allocation --> Database
-
-Allocation --> ActivityLog
-
-Database --> Socket
-
-Socket --> Dashboard
-
-Socket --> Notifications
+Employee --> Request["Allocation Request"]
+Request --> TxCheck["Prisma $transaction:\ncheck for existing ACTIVE allocation"]
+TxCheck -->|"none found"| Allocate["Create Allocation + update Asset status"]
+TxCheck -->|"already allocated"| Conflict["409 asset_already_allocated\n+ currentlyHeldBy"]
+Conflict --> TransferForm["Transfer Request form\n(From / To / Reason)"]
+TransferForm --> AutoApprove["Auto-approved (no manual approval step)"]
+AutoApprove --> Allocate
+Allocate --> History["Write AssetHistory"]
+Allocate --> Log["logActivity()"]
+Log --> Refetch["Dashboard refetch"]
 ```
+
+Enforced inside a single Prisma `$transaction` (check-then-create), not via a database-level partial unique index — SQLite/Prisma doesn't support declaring that constraint in the schema for this stack, so the transaction is the actual source of truth. Tested by firing two allocation requests back-to-back against the same asset and confirming only one succeeds.
 
 ---
 
-# Asset Lifecycle
+## Resource Booking Overlap (flagship demo #2)
+
+```mermaid
+flowchart LR
+
+Booker --> BookingReq["Booking Request\n(resourceId, start, end)"]
+BookingReq --> OverlapCheck["Query existing non-cancelled bookings\nfor overlapping range"]
+OverlapCheck -->|"overlap found"| Reject["409 booking_overlap\n+ conflictingBooking"]
+OverlapCheck -->|"no overlap"| Create["Create ResourceBooking"]
+Create --> Refetch["Dashboard KPI refetch"]
+```
+
+Same shape as the allocation check — a same-pattern query-then-create, no DB-level exclusion constraint (SQLite has no equivalent to Postgres `EXCLUDE USING gist`). Correctness rests on the application-layer check being airtight; this is why it's cross-tested by a second team member before the 4:00 sync.
+
+---
+
+## Asset Lifecycle
 
 ```mermaid
 stateDiagram-v2
 
-[*] --> Registered
-
-Registered --> Available
-
+[*] --> Available
 Available --> Allocated
-
 Allocated --> Returned
-
 Returned --> Available
-
 Allocated --> UnderMaintenance
-
 UnderMaintenance --> Available
-
 Available --> Lost
-
-Lost --> Recovered
-
-Recovered --> Available
-
 Available --> Retired
-
 Retired --> Disposed
-
 Disposed --> [*]
 ```
 
 ---
 
-# Deployment Architecture
+## Deployment / Local Run
 
 ```mermaid
 flowchart LR
 
-Browser
-
-Browser -->|"HTTPS"| Next
-
-Next["Next.js Frontend"]
-
-Next -->|"REST"| Express
-
-Next -->|"Socket.IO"| Socket
-
-Express["Express API"]
-
-Socket["Socket.IO"]
-
-Express --> Prisma
-
-Prisma --> PostgreSQL
-
-Express --> UploadStorage["Local Uploads"]
-
-PostgreSQL["PostgreSQL 16"]
-
+Browser -->|"HTTP"| NextServer["next dev (single process)"]
+NextServer --> Prisma
+Prisma --> SQLiteFile[("./dev.db")]
 ```
 
+One process, one command, no containers to explain during the demo.
+
 ---
 
-# Cross-Cutting Design Principles
+## Cross-Cutting Design Principles
 
 | Principle | Implementation |
-|------------|----------------|
-| Local First | PostgreSQL running locally via Docker |
-| Authentication | JWT + bcrypt |
-| Authorization | Role-Based Access Control |
-| Validation | Shared Zod schemas on frontend and backend |
-| Database | Prisma ORM with parameterized SQL |
-| Real-Time | Socket.IO (no external messaging service) |
-| File Storage | Multer storing uploads locally |
-| Logging | Immutable Activity Logs |
-| Error Handling | Centralized Express middleware |
-| Security | Rate limiting, validation, JWT verification |
+|---|---|
+| Local-first | SQLite file on disk, zero external services |
+| Authentication | NextAuth Credentials provider + bcrypt |
+| Authorization | Role checks in route handlers + `middleware.ts` redirect for unauthenticated users |
+| Validation | Zod schemas in `lib/schemas.ts`, shared between forms (React Hook Form resolver) and API routes |
+| Database | Prisma ORM against SQLite |
+| Real-time | None — refetch-on-mutation instead of Socket.IO |
+| File storage | None — photo upload cut from scope for the 6-hour build |
+| Logging | `ActivityLog` table + shared `logActivity()` helper called from every mutation |
+| Error handling | Per-route try/catch returning `{ error, message, field }`, not a global Express error middleware |
+| Security | Zod validation + bcrypt + role checks. No rate limiting — cut for build speed |
 
 ---
 
-# Architectural Decisions
-
-- **No Firebase**
-- **No Supabase**
-- **No MongoDB**
-- **No Redis**
-- **No Cloud Storage**
-- **No Third-Party Authentication**
-- **Local PostgreSQL only**
-- **REST-first API architecture**
-- **Real-time updates using Socket.IO**
-- **Repository pattern for data access**
-- **Shared validation using Zod**
-- **Role-Based Access Control**
-- **Local file storage using Multer**
-- **Parameterized database queries**
-- **Immutable audit and activity logging**
----
 
 ## Tech Stack
 
 | Layer | Technology | Notes |
 |---|---|---|
-| Frontend | Next.js 15 (App Router), TypeScript, Tailwind CSS, shadcn/ui, Zustand | Client-side state, dashboards, forms |
-| Calendar UI | react-big-calendar | Resource booking calendar view |
-| Backend | Express.js, TypeScript | REST API + Socket.IO server |
-| ORM | Prisma | Type-safe schema, migrations, DB-level constraints |
-| Database | PostgreSQL 16 (Docker, local) | No cloud DB, no Redis — runs on `localhost:5432` |
-| Auth | Custom — bcrypt + JWT | No Clerk/Firebase Auth. Signup creates Employee accounts only; Admin promotes roles. |
-| Real-time | Socket.IO (self-hosted, in-process) | Live KPI updates, booking confirmations, overdue alerts, audit flags — no message broker needed at this scale |
-| File storage | Multer → local disk (`/apps/api/uploads`) | Asset photos, maintenance photos, audit documents |
-| Validation | Zod (shared schemas, frontend + backend) | Field-level inline feedback on invalid input |
-| Charts | Recharts | Utilization trends, booking heatmap, reports |
-| Containerization | Docker Compose | One command spins up Postgres + API + Web identically for every team member |
+| Framework | Next.js 15 (App Router) | Full-stack — pages and API routes in one app |
+| Language | TypeScript | |
+| UI | Tailwind CSS, shadcn/ui | |
+| State | Zustand | Client-side state where needed beyond server data |
+| Forms | React Hook Form + Zod resolver | Inline field-level errors |
+| Resource booking UI | Custom static day-grid | Not react-big-calendar — a styled grid of hour rows, built by hand |
+| Charts | Recharts | Utilization + maintenance-frequency charts, cut to plain tables first if behind schedule |
+| ORM | Prisma | Type-safe schema + migrations |
+| Database | SQLite (local file, `prisma/dev.db`) | No Docker, no cloud DB |
+| Auth | NextAuth (Credentials provider) + bcryptjs | JWT session strategy; signup always creates an Employee account |
+| Validation | Zod | Shared schemas, `lib/schemas.ts` |
 
 ---
 
@@ -437,41 +222,36 @@ PostgreSQL["PostgreSQL 16"]
 
 ```
 assetflow/
-├── apps/
-│   ├── web/                 # Next.js 15 frontend
-│   │   ├── app/
-│   │   ├── components/
-│   │   └── store/            # Zustand stores
-│   └── api/                  # Express + TypeScript backend
-│       ├── src/
-│       │   ├── modules/      # org-setup, assets, allocations, bookings,
-│       │   │                    maintenance, audits, notifications
-│       │   ├── middleware/   # auth, RBAC, validation
-│       │   ├── sockets/      # Socket.IO event handlers
-│       │   └── validators/   # Zod schemas
-│       └── uploads/          # local file storage (gitignored)
-├── packages/
-│   └── shared-types/         # types & Zod schemas shared by web + api
+├── app/
+│   ├── (routes)/              # login, dashboard, assets, bookings, etc.
+│   ├── api/                   # route handlers: auth, assets, allocations, bookings, ...
+│   └── page.tsx               # redirects to /login
+├── components/                 # shared UI (sidebar, StatCard, Table, etc.)
+├── lib/
+│   ├── prisma.ts               # Prisma client singleton
+│   ├── schemas.ts              # Zod schemas (per-module, added by whoever owns that route)
+│   ├── logActivity.ts          # shared activity-log helper
+│   ├── allocations.ts          # allocation conflict-check transaction
+│   └── bookings.ts             # booking overlap-check
 ├── prisma/
-│   └── schema.prisma         # single source of truth for all entities
-├── docs/
-│   ├── architecture.svg
-│   ├── API.md                 # endpoint contract (see below)
-│   └── Database.md            # entity reference (see below)
-├── docker-compose.yml
+│   ├── schema.prisma
+│   ├── seed.ts
+│   └── dev.db                  # local SQLite file (gitignored — each teammate generates their own)
+├── types/
+│   └── next-auth.d.ts          # session/user type augmentation
+├── middleware.ts                # auth redirect for unauthenticated users
+├── auth.ts                      # NextAuth config
 └── README.md
 ```
 
 ---
 
-
-
 ## Getting Started (Windows / PowerShell)
 
 ### Prerequisites
 - Node.js 20+
-- Docker Desktop
 - npm
+
 
 ### 1. Clone and install
 
@@ -481,87 +261,67 @@ cd assetflow
 npm install
 ```
 
-### 2. Start the local database
+### 2. Configure environment variables
+
+Create a `.env` file at the project root:
+
+```
+AUTH_SECRET="replace-with-a-long-random-string"
+```
+
+Generate one quickly if you don't have one:
+```powershell
+npx auth secret
+```
+
+### 3. Run migrations + seed
 
 ```powershell
-docker compose up -d
-```
-
-This starts a local PostgreSQL container. No cloud account, no connection string from a third party.
-
-### 3. Configure environment variables
-
-```powershell
-Copy-Item apps/api/.env.example apps/api/.env
-Copy-Item apps/web/.env.example apps/web/.env
-```
-
-`apps/api/.env`
-```
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/assetflow"
-JWT_SECRET="replace-with-a-long-random-string"
-JWT_EXPIRES_IN=3600
-BCRYPT_ROUNDS=10
-PORT=4000
-```
-
-`apps/web/.env`
-```
-NEXT_PUBLIC_API_URL="http://localhost:4000"
-NEXT_PUBLIC_SOCKET_URL="http://localhost:4000"
-```
-
-### 4. Run database migrations + seed
-
-```powershell
-npx prisma migrate dev --schema=./prisma/schema.prisma
+npx prisma generate
+npx prisma migrate dev --name init
 npx prisma db seed
 ```
 
-### 5. Start the app
+### 4. Start the app
 
 ```powershell
-# Terminal 1 — API
-cd apps/api
-npm run dev
-
-# Terminal 2 — Web
-cd apps/web
 npm run dev
 ```
 
-Visit `http://localhost:3000`.
+Visit `http://localhost:3000` — it redirects straight to `/login`.
+
+**One command block for the whole team, no Docker to explain:**
+```powershell
+npm install && npx prisma migrate dev && npx prisma db seed && npm run dev
+```
 
 ---
 
 ## Data Model Reference
 
-Core entities and the constraints that enforce AssetFlow's business rules. Implemented as Prisma models backed by these Postgres-level guarantees:
-
 | Entity | Key Fields | Constraint / Index |
 |---|---|---|
-| `User` | email, passwordHash, roles[], departmentId, status | `email` unique; role assignment writable only via Admin-guarded endpoint |
-| `Department` | name, parentDeptId, headId, status | Self-referencing FK for hierarchy |
-| `AssetCategory` | name, customFields (JSON) | Per-category dynamic fields (e.g. warranty period) |
+| `User` | email, passwordHash, role, departmentId, status | `email` unique; role assignment writable only via Admin-guarded `/api/employees/:id/promote` |
+| `Department` | name, parentDeptId, headId, status | Self-referencing FK for hierarchy (hierarchy UI itself is cut unless time allows) |
+| `AssetCategory` | name, customFields (stored as JSON string — SQLite has no native JSON type via Prisma) | |
 | `Asset` | assetTag, categoryId, serialNumber, condition, location, isBookable, status | `assetTag` and `serialNumber` unique; indexed on `status`, `categoryId` |
 | `AssetHistory` | assetId, fromStatus, toStatus, actorId, reason | Immutable log of every lifecycle transition |
-| `Allocation` | assetId, holderId/holderDeptId, expectedReturnDate, status | **Partial unique index**: only one `Active` allocation per `assetId` — this is what blocks double-allocation at the DB layer, not just in application code |
-| `TransferRequest` | assetId, fromHolderId, toHolderId, status | Requested → Approved → Re-allocated workflow |
-| `ResourceBooking` | resourceId, bookerId, startTime, endTime, status | **Partial unique/overlap constraint** on `(resourceId, startTime, endTime)` where `status != 'Cancelled'` — rejects overlapping slots at the DB layer as a second line of defense behind the API overlap check |
-| `MaintenanceRequest` | assetId, requesterId, priority, status, technicianId | Pending → Approved/Rejected → Assigned → In Progress → Resolved |
-| `AuditCycle` | name, scopeType, scopeId, startDate, endDate, status | scope = department / location / all |
-| `AuditAssignment` | cycleId, auditorId | Unique per `(cycleId, auditorId)` |
-| `AuditFinding` | cycleId, assetId, auditorId, status (Verified/Missing/Damaged) | Feeds auto-generated discrepancy report |
-| `Notification` | userId, type, message, relatedResourceType/Id, isRead | Pushed live via Socket.IO on write |
-| `ActivityLog` | actorId, action, resourceType, resourceId, changes (JSON) | Immutable audit trail of who did what, when |
+| `Allocation` | assetId, holderId, expectedReturnDate, status | Only one `ACTIVE` allocation per asset — enforced via a Prisma `$transaction` check-then-create, **not** a DB-level partial unique index (unsupported declaratively on this stack) |
+| `TransferRequest` | assetId, fromHolderId, toHolderId, status | Requested → auto-approved → re-allocated (manual approval step cut) |
+| `ResourceBooking` | resourceId, bookerId, startTime, endTime, status | Overlap rejected via an application-layer query-then-create check, no DB-level exclusion constraint |
+| `MaintenanceRequest` | assetId, requesterId, priority, status, technicianId | Pending → Approved → Technician Assigned → In Progress → Resolved (button-based stage moves, no drag-and-drop) |
+| `AuditCycle` | name, scopeType, scopeId, startDate, endDate, status | Single implicit auditor (whoever's logged in), no multi-auditor assignment |
+| `AuditFinding` | cycleId, assetId, auditorId, status (Verified/Missing/Damaged) | Closing a cycle flips any `MISSING` finding's asset to `LOST` |
+| `Notification` | userId, type, message, relatedResourceType/Id, isRead | Read from `ActivityLog`, no live push |
+| `ActivityLog` | actorId, action, resourceType, resourceId, changes (JSON string) | Immutable audit trail; every mutation calls `logActivity()` |
 
-Full schema lives in `prisma/schema.prisma`; a plain-English version is kept in `docs/Database.md`.
+Full schema lives in `prisma/schema.prisma`.
 
 ---
 
 ## API Conventions
 
-Base URL: `http://localhost:4000/api`
+Base URL: `/api` (Next.js route handlers under `app/api/`)
 
 **Response envelope**
 ```json
@@ -572,43 +332,39 @@ Base URL: `http://localhost:4000/api`
 { "id": 1, "field": "value" }
 
 // Errors
-{ "error": "field_specific_message", "field": "email" }
+{ "error": "machine_readable_code", "message": "Human readable", "field": "email" }
 ```
 
-**Auth header**
-```
-Authorization: Bearer <jwt>
-```
+**Session**: handled by NextAuth's JWT session cookie — no manual `Authorization: Bearer` header to attach client-side.
 
 **Representative endpoints**
 
 | Method | Route | Auth | Purpose |
 |---|---|---|---|
-| `POST` | `/auth/signup` | Public | Creates an **Employee** account only — no role field accepted from the client |
-| `POST` | `/auth/login` | Public | Returns JWT + user profile |
-| `GET` | `/auth/me` | Any | Current session validation |
-| `GET` / `POST` / `PUT` / `DELETE` | `/departments` | Admin (write) | Department hierarchy management |
-| `POST` | `/employees/:id/promote` | Admin only | The **only** place a role is ever assigned |
-| `GET` / `POST` | `/assets` | Asset Manager (write) | Register + search/filter by tag, serial, category, status |
-| `POST` | `/allocations` | Asset Manager, Dept Head | Returns `409` with `currently_held_by` if asset already allocated, prompting a transfer request instead |
-| `POST` | `/bookings` | Any | Returns `409` on overlap with the conflicting slot |
-| `POST` | `/maintenance-requests` | Any | Raise request; `PATCH` for approval workflow transitions |
-| `POST` | `/audit-cycles` | Admin | Create cycle + assign auditors |
-| `PATCH` | `/audit-cycles/:id/findings` | Assigned auditor | Verified / Missing / Damaged |
-| `GET` | `/reports/*` | Admin, Managers | Utilization, maintenance frequency, booking heatmap |
-
-Full request/response bodies for every endpoint are documented in `docs/API.md`.
+| `POST` | `/api/auth/signup` | Public | Creates an **Employee** account only — role is hard-coded server-side, never taken from the request body |
+| — | `/api/auth/[...nextauth]` | Public/Session | NextAuth's own login/session endpoints |
+| `GET`/`POST`/`PUT`/`DELETE` | `/api/departments` | Admin (write) | Department management |
+| `POST` | `/api/employees/:id/promote` | Admin only | The only place a role is ever assigned; rejects `ADMIN` as a target role |
+| `GET`/`POST` | `/api/assets` | Asset Manager (write) | Register + search/filter by tag, serial, category, status |
+| `POST` | `/api/allocations` | Asset Manager, Dept Head | Returns `409` with `currentlyHeldBy` if already allocated |
+| `POST` | `/api/allocations/:id/return` | Holder/Asset Manager | Marks an allocation returned, flips asset back to `AVAILABLE` |
+| `POST` | `/api/bookings` | Any | Returns `409` with `conflictingBooking` on overlap |
+| `POST`/`PATCH` | `/api/maintenance-requests` | Any / Asset Manager | Raise + approval workflow transitions |
+| `POST` | `/api/audit-cycles` | Admin | Create cycle |
+| `PATCH` | `/api/audit-cycles/:id/findings` | Auditor | Verified / Missing / Damaged |
+| `POST` | `/api/audit-cycles/:id/close` | Admin | Locks cycle, flips Missing → Lost |
+| `GET` | `/api/reports/*` | Admin, Managers | Utilization, maintenance frequency |
 
 ---
 
 ## Core Domain Rules
 
-- **Asset lifecycle**: `Available → Allocated → Reserved → Under Maintenance → Lost → Retired → Disposed`, enforced via a status enum with explicit valid transitions in the API layer, and logged to `AssetHistory` on every change.
-- **No double-allocation**: enforced at two layers — an API-level check that returns a clear "currently held by X" response with a transfer option, *and* a partial unique DB index as the source of truth under concurrent requests.
-- **Booking overlap prevention**: checked at the API layer before insert, backed by a DB-level partial unique constraint so overlapping slots can never land in the table even under a race.
-- **Realistic account creation**: signup always creates an Employee account. Only an Admin, from the Employee Directory, can promote someone to Department Head or Asset Manager — no self-elevation is possible anywhere in the API.
-- **Email validation**: signup emails are checked for correct format and against a bundled disposable-domain blocklist (no external API call). Invalid emails return a specific, actionable error (e.g. `{"error": "Enter a valid email", "field": "email"}`) rather than a generic failure.
-- **Real-time feedback**: bookings, allocations, maintenance approvals, and audit flags push instantly to affected users via Socket.IO — no polling.
+- **Asset lifecycle**: `Available → Allocated → Under Maintenance → Available`, plus `Available → Lost/Retired → Disposed`, logged to `AssetHistory` on every change.
+- **No double-allocation**: enforced inside a Prisma `$transaction` (check-then-create) — there is no DB-level partial unique index on this stack, so the transaction boundary is the actual guarantee. Verified by firing two concurrent allocation requests against the same asset in testing.
+- **Booking overlap prevention**: checked at the API layer before insert — no DB-level exclusion constraint (SQLite doesn't support one declaratively via Prisma). Verified the same way: an adjacent booking succeeds, an overlapping one is rejected.
+- **Non-self-elevating signup**: signup always creates an Employee account, regardless of what's submitted in the request body. Only an Admin, via the promote endpoint, can move someone to Asset Manager or Department Head — and that endpoint explicitly rejects `ADMIN` as a target role.
+- **Email validation**: Zod format check shared between the signup form and the API route — no disposable-domain blocklist (cut from scope).
+- **No real-time push**: after any mutation (allocation, transfer, booking, maintenance stage change), the frontend refetches the affected data — no Socket.IO subscription.
 
 ---
 
@@ -616,10 +372,10 @@ Full request/response bodies for every endpoint are documented in `docs/API.md`.
 
 | Role | Capabilities |
 |---|---|
-| **Admin** | Manages departments, categories, audit cycles, and role assignment. Views org-wide analytics. |
-| **Asset Manager** | Registers/allocates assets. Approves transfers, maintenance requests, and returns. |
-| **Department Head** | Views department assets. Approves department allocation/transfer requests. Books resources on the department's behalf. |
-| **Employee** | Views own allocated assets. Books shared resources. Raises maintenance requests. Initiates returns/transfers. |
+| **Admin** | Departments, categories, audit cycles, employee/role promotion, org-wide reports |
+| **Asset Manager** | Register/allocate assets, approve transfers/maintenance/audit discrepancies, approve returns |
+| **Department Head** | View dept assets, approve dept allocation/transfer requests, book shared resources |
+| **Employee** | View own assets, book resources, raise maintenance requests, initiate return/transfer |
 
 ---
 
@@ -627,14 +383,13 @@ Full request/response bodies for every endpoint are documented in `docs/API.md`.
 
 1. Login / Signup
 2. Dashboard (KPIs, overdue highlights, quick actions)
-3. Organization Setup (Departments, Asset Categories, Employee Directory) — Admin only
+3. Organization Setup (Departments, Categories, Employees) — Admin only
 4. Asset Registration & Directory
-5. Asset Allocation & Transfer
-6. Resource Booking (calendar view, overlap validation)
-7. Maintenance Management (approval workflow)
+5. Asset Allocation & Transfer — **flagship demo #1**
+6. Resource Booking (custom day-grid, overlap validation) — **flagship demo #2**
+7. Maintenance Management (kanban, button-based stage moves)
 8. Asset Audit (cycles, discrepancy reports)
 9. Reports & Analytics
 10. Activity Logs & Notifications
 
 ---
-
