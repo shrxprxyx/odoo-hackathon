@@ -115,3 +115,34 @@ export const auditFindingSchema = z.object({
   auditorNotes: z.string().optional(),
 });
 export type AuditFindingInput = z.infer<typeof auditFindingSchema>;
+
+// =====================================================
+// Compatibility aliases for Asset Allocation module
+// =====================================================
+
+export const DepartmentSchema = departmentSchema;
+export const CreateDepartmentSchema = departmentSchema;
+export const UpdateDepartmentSchema = departmentSchema.partial();
+
+export const AssetCategorySchema = categorySchema.extend({
+  customFields: z.string().default("{}"),
+});
+
+export const CreateAssetCategorySchema = AssetCategorySchema;
+export const UpdateAssetCategorySchema = AssetCategorySchema.partial();
+
+export const AssetSchema = assetSchema.extend({
+  photoUrl: z.string().optional(),
+});
+
+export const CreateAssetSchema = AssetSchema;
+
+export const AllocationSchema = allocationSchema.extend({
+  holderDeptId: z.number().optional().nullable(),
+});
+
+export const CreateAllocationSchema = AllocationSchema;
+
+export const ReturnAssetSchema = allocationReturnSchema;
+
+export const TransferAssetSchema = transferRequestSchema;
