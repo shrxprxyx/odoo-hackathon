@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
 
 interface ApiErrorResponse {
   error?: string;
@@ -11,7 +11,10 @@ export class ApiError extends Error {
     public data: ApiErrorResponse,
     message?: string
   ) {
-    super(message || data.error || "API Error");
+    // Prefer the backend's actual message/error code over a generic string -
+    // this is what makes signup's inline Zod errors, the allocation conflict
+    // banner, etc. show real text instead of "API Error: 400" everywhere.
+    super(message || data.message || data.error || "API Error");
     this.name = "ApiError";
   }
 }
@@ -39,11 +42,7 @@ async function apiCall<T = any>(
   }
 
   if (!response.ok) {
-    throw new ApiError(
-      response.status,
-      data,
-      `API Error: ${response.status}`
-    );
+    throw new ApiError(response.status, data);
   }
 
   return data as T;
@@ -197,21 +196,26 @@ export const allocationApi = {
 // ── Transfer Request Endpoints ──────────────────────
 export const transferApi = {
   create: async (payload: any) => {
-    return apiCall("/transfers", {
+    // Real route is /allocations/transfer, not /transfers - and transfers
+    // auto-approve per the build plan (no manual approval step was built),
+    // so this single call is the whole flow.
+    return apiCall("/allocations/transfer", {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
 
+  // No backing route exists for these two - transfers aren't listed
+  // separately (they resolve straight into an Allocation record, visible
+  // via allocationApi.list / AssetHistory), and there's no manual-approve
+  // endpoint since transfers auto-approve. Left as TODOs rather than
+  // removed, in case a real approval step gets added later.
   list: async () => {
-    const data = await apiCall("/transfers", { method: "GET" });
-    return Array.isArray(data) ? data : data.data || [];
+    throw new Error("transferApi.list has no backing route - transfers auto-approve, use allocationApi.list instead");
   },
 
-  approve: async (id: number) => {
-    return apiCall(`/transfers/${id}/approve`, {
-      method: "POST",
-    });
+  approve: async (_id: number) => {
+    throw new Error("transferApi.approve has no backing route - transfers auto-approve on create");
   },
 };
 
@@ -252,19 +256,19 @@ export const maintenanceApi = {
   list: async (status?: string) => {
     const params = new URLSearchParams();
     if (status) params.append("status", status);
-    const data = await apiCall(`/maintenance?${params}`, { method: "GET" });
+    const data = await apiCall(`/maintenance-requests?${params}`, { method: "GET" });
     return Array.isArray(data) ? data : data.data || [];
   },
 
   create: async (payload: any) => {
-    return apiCall("/maintenance", {
+    return apiCall("/maintenance-requests", {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
 
   updateStatus: async (id: number, status: string) => {
-    return apiCall(`/maintenance/${id}/status`, {
+    return apiCall(`/maintenance-requests/${id}`, {
       method: "PATCH",
       body: JSON.stringify({ status }),
     });
@@ -274,26 +278,32 @@ export const maintenanceApi = {
 // ── Audit Endpoints ────────────────────────────────
 export const auditApi = {
   createCycle: async (payload: any) => {
-    return apiCall("/audits/cycles", {
+    return apiCall("/audit-cycles", {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
 
   listCycles: async () => {
-    const data = await apiCall("/audits/cycles", { method: "GET" });
+    const data = await apiCall("/audit-cycles", { method: "GET" });
     return Array.isArray(data) ? data : data.data || [];
   },
 
-  createFinding: async (payload: any) => {
-    return apiCall("/audits/findings", {
-      method: "POST",
+  getCycle: async (cycleId: number) => {
+    return apiCall(`/audit-cycles/${cycleId}`, { method: "GET" });
+  },
+
+  // Real route is nested under the cycle (PATCH, not POST) and needs
+  // cycleId in the path - the finding record has no meaning outside a cycle.
+  recordFinding: async (cycleId: number, payload: any) => {
+    return apiCall(`/audit-cycles/${cycleId}/findings`, {
+      method: "PATCH",
       body: JSON.stringify(payload),
     });
   },
 
   closeCycle: async (cycleId: number) => {
-    return apiCall(`/audits/cycles/${cycleId}/close`, {
+    return apiCall(`/audit-cycles/${cycleId}/close`, {
       method: "POST",
     });
   },

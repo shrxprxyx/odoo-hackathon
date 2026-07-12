@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { logActivity } from "@/lib/logActivity";
 
-export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await auth();
   if (!session || session.user.role !== "ADMIN") {
     return NextResponse.json(
@@ -12,7 +14,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     );
   }
 
-  const cycleId = Number(params.id);
+  const cycleId = Number(id);
   if (!Number.isInteger(cycleId) || cycleId <= 0) {
     return NextResponse.json({ error: "invalid_id", message: "Invalid audit cycle id" }, { status: 400 });
   }
@@ -30,7 +32,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
 
   const adminId = Number(session.user.id);
 
-  const result = await prisma.$transaction(async (tx: { auditFinding: { findMany: (arg0: { where: { cycleId: number; status: string; }; include: { asset: boolean; }; }) => any; count: (arg0: { where: { cycleId: number; status: string; }; }) => any; }; asset: { update: (arg0: { where: { id: any; }; data: { status: string; }; }) => any; }; assetHistory: { create: (arg0: { data: { assetId: any; fromStatus: any; toStatus: string; actorId: number; reason: string; }; }) => any; }; auditCycle: { update: (arg0: { where: { id: number; }; data: { status: string; closedBy: number; closedAt: Date; }; }) => any; }; }) => {
+  const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const missingFindings = await tx.auditFinding.findMany({
       where: { cycleId, status: "MISSING" },
       include: { asset: true },

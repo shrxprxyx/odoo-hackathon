@@ -1,12 +1,13 @@
 import { prisma } from '@/lib/prisma';
 import { TransferAssetSchema } from '@/lib/schemas';
 import { transferAsset } from '@/lib/allocations';
+import { logActivity } from '@/lib/logActivity';
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
+import { auth } from '@/auth';
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession();
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const session = await auth();
+  if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const body = await req.json();
@@ -16,6 +17,7 @@ export async function POST(req: NextRequest) {
     const actor = await prisma.user.findUnique({
       where: { email: session.user.email },
     });
+    if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     // Verify toHolder exists
     const toHolder = await prisma.user.findUnique({
@@ -26,18 +28,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Recipient user not found' }, { status: 400 });
     }
 
-    // Call transfer logic (handles transaction)
+    // Call transfer logic (handles transaction). fromHolderId is optional on
+    // the wire - when omitted, transferAsset() trusts the DB's current holder
+    // instead of requiring the caller to already know it.
     const result = await transferAsset(
       data.assetId,
       data.fromHolderId,
       data.toHolderId,
       data.reason,
-      actor?.id
+      actor.id
     );
 
     if (!result.success) {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
+
+    await logActivity('asset_transferred', {
+      actorId: actor.id,
+      resourceType: 'Asset',
+      resourceId: data.assetId,
+      changes: { toHolderId: data.toHolderId, reason: data.reason },
+    });
 
     // Success - return new allocation
     return NextResponse.json(

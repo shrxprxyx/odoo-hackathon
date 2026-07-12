@@ -4,7 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { auditFindingSchema } from "@/lib/schemas";
 import { logActivity } from "@/lib/logActivity";
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json(
@@ -13,7 +14,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     );
   }
 
-  const cycleId = Number(params.id);
+  const cycleId = Number(id);
   if (!Number.isInteger(cycleId) || cycleId <= 0) {
     return NextResponse.json({ error: "invalid_id", message: "Invalid audit cycle id" }, { status: 400 });
   }

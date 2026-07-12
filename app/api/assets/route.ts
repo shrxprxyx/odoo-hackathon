@@ -1,11 +1,14 @@
 import { prisma } from '@/lib/prisma';
 import { CreateAssetSchema } from '@/lib/schemas';
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
+import { auth } from '@/auth';
+import { AssetStatus } from '@prisma/client';
+
+const VALID_ASSET_STATUSES = Object.values(AssetStatus);
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession();
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const session = await auth();
+  if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   // Only Admin or AssetManager can register assets
   const user = await prisma.user.findUnique({ where: { email: session.user.email } });
@@ -76,8 +79,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  const session = await getServerSession();
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const session = await auth();
+  if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const { searchParams } = new URL(req.url);
@@ -85,17 +88,25 @@ export async function GET(req: NextRequest) {
     const serial = searchParams.get('serial');
     const name = searchParams.get('name');
     const categoryId = searchParams.get('categoryId');
-    const status = searchParams.get('status');
+    const statusParam = searchParams.get('status');
     const location = searchParams.get('location');
+
+    if (statusParam && !VALID_ASSET_STATUSES.includes(statusParam as AssetStatus)) {
+      return NextResponse.json(
+        { error: 'validation_error', message: `status must be one of ${VALID_ASSET_STATUSES.join(', ')}`, field: 'status' },
+        { status: 400 }
+      );
+    }
+    const status = statusParam as AssetStatus | null;
 
     const assets = await prisma.asset.findMany({
       where: {
-        ...(tag && { assetTag: { contains: tag, mode: 'insensitive' } }),
-        ...(serial && { serialNumber: { contains: serial, mode: 'insensitive' } }),
-        ...(name && { name: { contains: name, mode: 'insensitive' } }),
+        ...(tag && { assetTag: { contains: tag } }),
+        ...(serial && { serialNumber: { contains: serial } }),
+        ...(name && { name: { contains: name } }),
         ...(categoryId && { categoryId: parseInt(categoryId) }),
         ...(status && { status }),
-        ...(location && { location: { contains: location, mode: 'insensitive' } }),
+        ...(location && { location: { contains: location } }),
       },
       include: {
         category: { select: { name: true } },
@@ -110,7 +121,7 @@ export async function GET(req: NextRequest) {
     });
 
     // Format response to flatten allocations
-    const formatted = assets.map((asset) => ({
+    const formatted = assets.map((asset: typeof assets[number]) => ({
       ...asset,
       currentHolder: asset.allocations[0]?.holder || null,
       allocations: undefined,

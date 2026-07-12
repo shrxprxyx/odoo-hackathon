@@ -1,12 +1,16 @@
 import { prisma } from '@/lib/prisma';
 import { CreateAllocationSchema } from '@/lib/schemas';
 import { allocateAsset } from '@/lib/allocations';
+import { logActivity } from '@/lib/logActivity';
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
+import { auth } from '@/auth';
+import { AllocationStatus } from '@prisma/client';
+
+const VALID_ALLOCATION_STATUSES = Object.values(AllocationStatus);
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession();
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const session = await auth();
+  if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const body = await req.json();
@@ -16,6 +20,7 @@ export async function POST(req: NextRequest) {
     const actor = await prisma.user.findUnique({
       where: { email: session.user.email },
     });
+    if (!actor) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     // Call core allocation logic (handles transactions + conflict detection)
     const result = await allocateAsset(
@@ -24,7 +29,7 @@ export async function POST(req: NextRequest) {
       data.holderDeptId || null,
       data.holderType,
       data.expectedReturnDate ? new Date(data.expectedReturnDate) : undefined,
-      actor?.id
+      actor.id
     );
 
     if (!result.success) {
@@ -42,6 +47,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
 
+    await logActivity('asset_allocated', {
+      actorId: actor.id,
+      resourceType: 'Asset',
+      resourceId: data.assetId,
+      changes: { holderId: data.holderId, holderDeptId: data.holderDeptId },
+    });
+
     // Success
     return NextResponse.json(result.allocation, { status: 200 });
   } catch (error) {
@@ -54,20 +66,28 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  const session = await getServerSession();
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const session = await auth();
+  if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const { searchParams } = new URL(req.url);
     const assetId = searchParams.get('assetId');
     const holderId = searchParams.get('holderId');
-    const status = searchParams.get('status') || 'ACTIVE';
+    const statusParam = searchParams.get('status') || 'ACTIVE';
+
+    if (!VALID_ALLOCATION_STATUSES.includes(statusParam as AllocationStatus)) {
+      return NextResponse.json(
+        { error: 'validation_error', message: `status must be one of ${VALID_ALLOCATION_STATUSES.join(', ')}`, field: 'status' },
+        { status: 400 }
+      );
+    }
+    const status = statusParam as AllocationStatus;
 
     const allocations = await prisma.allocation.findMany({
       where: {
         ...(assetId && { assetId: parseInt(assetId) }),
         ...(holderId && { holderId: parseInt(holderId) }),
-        ...(status && { status }),
+        status,
       },
       include: {
         holder: {

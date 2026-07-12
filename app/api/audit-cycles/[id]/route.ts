@@ -2,13 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAssetsInScope } from "@/lib/audits";
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const cycleId = Number(id);
-
   if (!Number.isInteger(cycleId) || cycleId <= 0) {
     return NextResponse.json(
       {
