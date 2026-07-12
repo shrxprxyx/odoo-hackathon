@@ -12,3 +12,17 @@ export const promoteSchema = z.object({
   role: z.enum(["ASSET_MANAGER", "DEPARTMENT_HEAD"]),
 });
 export type PromoteInput = z.infer<typeof promoteSchema>;
+
+export const bookingSchema = z
+  .object({
+    resourceId: z.coerce.number().int().positive(),
+    startTime: z.coerce.date(),
+    endTime: z.coerce.date(),
+    purpose: z.string().max(300).optional(),
+  })
+  .refine((data) => data.endTime > data.startTime, {
+    message: "End time must be after start time",
+    path: ["endTime"],
+  });
+
+export type BookingInput = z.infer<typeof bookingSchema>;
