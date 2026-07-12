@@ -30,7 +30,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: <BarChart3 size={20} /> },
   {
     label: "Organization Setup",
-    href: "/organization-setup",
+    href: "/org-setup",
     icon: <Settings size={20} />,
     adminOnly: true,
   },

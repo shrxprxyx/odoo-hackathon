@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
-import { LoginSchema, SignupSchema, type LoginInput, type SignupInput } from "@/lib/schemas";
+import { loginSchema, signupSchema, type LoginInput, type SignupInput } from "@/lib/schemas";
 
 interface LoginFormProps {
   onSubmit: (data: LoginInput) => Promise<void>;
@@ -18,7 +18,7 @@ export function LoginForm({ onSubmit, isLoading = false }: LoginFormProps) {
     handleSubmit,
     formState: { errors },
   } = useForm<LoginInput>({
-    resolver: zodResolver(LoginSchema),
+    resolver: zodResolver(loginSchema),
   });
 
   const onSubmitForm = async (data: LoginInput) => {
@@ -98,7 +98,7 @@ export function SignupForm({ onSubmit, isLoading = false }: SignupFormProps) {
     handleSubmit,
     formState: { errors },
   } = useForm<SignupInput>({
-    resolver: zodResolver(SignupSchema),
+    resolver: zodResolver(signupSchema),
   });
 
   const onSubmitForm = async (data: SignupInput) => {

@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 
-export function MaintenancePage() {
+export default function MaintenancePage() {
   return (
     <div className="space-y-8">
       <div>

@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
-export function OrganizationSetupPage() {
+export default function OrganizationSetupPage() {
   return (
     <div className="space-y-8">
       <div>

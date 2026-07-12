@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-export function AssetsPage() {
+export default function AssetsPage() {
   return (
     <div className="space-y-8">
       <div>

@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 
-export function AuditsPage() {
+export default function AuditsPage() {
   return (
     <div className="space-y-8">
       <div>

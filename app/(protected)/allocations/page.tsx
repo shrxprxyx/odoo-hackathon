@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 
-export function AllocationsPage() {
+export default function AllocationsPage() {
   return (
     <div className="space-y-8">
       <div>
