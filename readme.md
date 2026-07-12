@@ -8,8 +8,6 @@ Built for [Hackathon Name] — a fully self-hosted, local-first stack with no th
 
 ## Architecture
 
-![AssetFlow Architecture](./docs/architecture.svg)
-
 The system runs entirely on infrastructure you control: a local PostgreSQL instance (via Docker), a self-hosted Express API with an in-process Socket.IO server for real-time updates, and local disk storage for uploaded files. No Firebase, Supabase, or MongoDB — and no managed cloud database or cache layer.
 
 ---
