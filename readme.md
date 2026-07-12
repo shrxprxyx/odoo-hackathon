@@ -10,6 +10,409 @@ Built for [Hackathon Name] — a fully self-hosted, local-first stack with no th
 
 The system runs entirely on infrastructure you control: a local PostgreSQL instance (via Docker), a self-hosted Express API with an in-process Socket.IO server for real-time updates, and local disk storage for uploaded files. No Firebase, Supabase, or MongoDB — and no managed cloud database or cache layer.
 
+# Architecture
+
+AssetFlow follows a modular, layered architecture designed around separation of concerns. Each layer has a clearly defined responsibility, allowing the system to remain maintainable, scalable, and secure.
+
+---
+
+## High-Level System Architecture
+
+```mermaid
+flowchart TB
+
+%% =========================
+%% USERS
+%% =========================
+
+subgraph USERS["👥 Users"]
+A1[Administrator]
+A2[Asset Manager]
+A3[Department Head]
+A4[Employee]
+end
+
+%% =========================
+%% FRONTEND
+%% =========================
+
+subgraph FRONTEND["🖥️ Frontend (Next.js 15 + React + TypeScript)"]
+
+Dashboard
+OrgSetup["Organization Setup"]
+EmployeeDirectory
+Assets
+Allocation
+Booking
+Maintenance
+Audit
+Reports
+Notifications
+Profile
+Settings
+
+end
+
+%% =========================
+%% API
+%% =========================
+
+subgraph API["⚙️ Express.js REST API"]
+
+Routes
+Controllers
+Services
+Repositories
+Middleware
+
+end
+
+%% =========================
+%% SECURITY
+%% =========================
+
+subgraph SECURITY["🔒 Security Layer"]
+
+JWT
+RBAC["Role-Based Access"]
+Validation["Zod Validation"]
+Bcrypt
+RateLimit["Rate Limiting"]
+ErrorHandling
+
+end
+
+%% =========================
+%% BUSINESS MODULES
+%% =========================
+
+subgraph MODULES["📦 Business Modules"]
+
+Organization
+AssetLifecycle
+AllocationService
+BookingService
+MaintenanceService
+AuditService
+NotificationService
+ReportingService
+ActivityService
+
+end
+
+%% =========================
+%% REALTIME
+%% =========================
+
+subgraph SOCKET["⚡ Socket.IO"]
+
+LiveDashboard
+LiveBooking
+LiveNotifications
+LiveMaintenance
+LiveAudit
+
+end
+
+%% =========================
+%% STORAGE
+%% =========================
+
+subgraph STORAGE["💾 Persistence Layer"]
+
+Prisma
+PostgreSQL[(PostgreSQL)]
+Uploads["Local Upload Storage"]
+
+end
+
+%% Connections
+
+USERS --> FRONTEND
+
+FRONTEND -->|REST API| API
+
+FRONTEND -->|Socket.IO| SOCKET
+
+API --> SECURITY
+
+SECURITY --> MODULES
+
+MODULES --> Prisma
+
+Prisma --> PostgreSQL
+
+MODULES --> Uploads
+
+SOCKET --> MODULES
+
+MODULES --> LiveDashboard
+MODULES --> LiveNotifications
+```
+
+---
+
+# Layered Architecture
+
+```mermaid
+flowchart TB
+
+Client["Client Browser"]
+
+subgraph Presentation
+
+Next["Next.js + React"]
+
+Components["Reusable Components"]
+
+Pages["Pages"]
+
+Forms["Forms"]
+
+end
+
+subgraph Application
+
+Routes
+
+Controllers
+
+Services
+
+Middleware
+
+Validation
+
+SocketIO
+
+end
+
+subgraph DataAccess
+
+Prisma
+
+Repository
+
+end
+
+subgraph Database
+
+Postgres[(PostgreSQL)]
+
+Uploads
+
+end
+
+Client --> Next
+
+Next --> Routes
+
+Routes --> Controllers
+
+Controllers --> Services
+
+Services --> Validation
+
+Services --> Repository
+
+Repository --> Prisma
+
+Prisma --> Postgres
+
+Services --> Uploads
+
+SocketIO --> Next
+```
+
+---
+
+# Authentication Flow
+
+```mermaid
+sequenceDiagram
+
+actor User
+
+participant Frontend
+
+participant API
+
+participant Auth
+
+participant PostgreSQL
+
+User->>Frontend: Enter Email & Password
+
+Frontend->>API: POST /auth/login
+
+API->>Auth: Validate Credentials
+
+Auth->>PostgreSQL: Find User
+
+PostgreSQL-->>Auth: User Record
+
+Auth->>Auth: Compare bcrypt Hash
+
+Auth->>Auth: Generate JWT
+
+Auth-->>API: JWT + User Details
+
+API-->>Frontend: Success Response
+
+Frontend-->>User: Dashboard
+```
+
+---
+
+# Asset Allocation Workflow
+
+```mermaid
+flowchart LR
+
+Employee
+
+Request
+
+Validation
+
+Availability
+
+Approval
+
+Allocation
+
+ActivityLog
+
+Database
+
+Socket
+
+Dashboard
+
+Notifications
+
+Employee --> Request
+
+Request --> Validation
+
+Validation --> Availability
+
+Availability --> Approval
+
+Approval --> Allocation
+
+Allocation --> Database
+
+Allocation --> ActivityLog
+
+Database --> Socket
+
+Socket --> Dashboard
+
+Socket --> Notifications
+```
+
+---
+
+# Asset Lifecycle
+
+```mermaid
+stateDiagram-v2
+
+[*] --> Registered
+
+Registered --> Available
+
+Available --> Allocated
+
+Allocated --> Returned
+
+Returned --> Available
+
+Allocated --> UnderMaintenance
+
+UnderMaintenance --> Available
+
+Available --> Lost
+
+Lost --> Recovered
+
+Recovered --> Available
+
+Available --> Retired
+
+Retired --> Disposed
+
+Disposed --> [*]
+```
+
+---
+
+# Deployment Architecture
+
+```mermaid
+flowchart LR
+
+Browser
+
+Browser -->|"HTTPS"| Next
+
+Next["Next.js Frontend"]
+
+Next -->|"REST"| Express
+
+Next -->|"Socket.IO"| Socket
+
+Express["Express API"]
+
+Socket["Socket.IO"]
+
+Express --> Prisma
+
+Prisma --> PostgreSQL
+
+Express --> UploadStorage["Local Uploads"]
+
+PostgreSQL["PostgreSQL 16"]
+
+```
+
+---
+
+# Cross-Cutting Design Principles
+
+| Principle | Implementation |
+|------------|----------------|
+| Local First | PostgreSQL running locally via Docker |
+| Authentication | JWT + bcrypt |
+| Authorization | Role-Based Access Control |
+| Validation | Shared Zod schemas on frontend and backend |
+| Database | Prisma ORM with parameterized SQL |
+| Real-Time | Socket.IO (no external messaging service) |
+| File Storage | Multer storing uploads locally |
+| Logging | Immutable Activity Logs |
+| Error Handling | Centralized Express middleware |
+| Security | Rate limiting, validation, JWT verification |
+
+---
+
+# Architectural Decisions
+
+- **No Firebase**
+- **No Supabase**
+- **No MongoDB**
+- **No Redis**
+- **No Cloud Storage**
+- **No Third-Party Authentication**
+- **Local PostgreSQL only**
+- **REST-first API architecture**
+- **Real-time updates using Socket.IO**
+- **Repository pattern for data access**
+- **Shared validation using Zod**
+- **Role-Based Access Control**
+- **Local file storage using Multer**
+- **Parameterized database queries**
+- **Immutable audit and activity logging**
 ---
 
 ## Tech Stack
@@ -60,6 +463,8 @@ assetflow/
 ```
 
 ---
+
+
 
 ## Getting Started (Windows / PowerShell)
 
