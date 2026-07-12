@@ -1,0 +1,394 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// ── Enums ────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  ASSET_MANAGER
+  DEPARTMENT_HEAD
+  EMPLOYEE
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum AssetCondition {
+  GOOD
+  FAIR
+  POOR
+}
+
+enum AssetStatus {
+  AVAILABLE
+  ALLOCATED
+  RESERVED
+  UNDER_MAINTENANCE
+  LOST
+  RETIRED
+  DISPOSED
+}
+
+enum HolderType {
+  EMPLOYEE
+  DEPARTMENT
+}
+
+enum AllocationStatus {
+  ACTIVE
+  RETURNED
+  OVERDUE
+}
+
+enum TransferStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum BookingStatus {
+  UPCOMING
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum MaintenancePriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum MaintenanceStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  IN_PROGRESS
+  RESOLVED
+}
+
+enum AuditScopeType {
+  DEPARTMENT
+  LOCATION
+  ALL
+}
+
+enum AuditCycleStatus {
+  ACTIVE
+  CLOSED
+}
+
+enum FindingStatus {
+  VERIFIED
+  MISSING
+  DAMAGED
+}
+
+// ── Identity ─────────────────────────────────────────
+
+model User {
+  id           Int        @id @default(autoincrement())
+  email        String     @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  role         Role       @default(EMPLOYEE)
+  departmentId Int?
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  department          Department?           @relation("DeptEmployees", fields: [departmentId], references: [id])
+  headOfDepartments   Department[]          @relation("DeptHead")
+  allocationsHeld     Allocation[]          @relation("AllocationHolder")
+  transfersRequested  TransferRequest[]     @relation("TransferRequestedBy")
+  transfersApproved   TransferRequest[]     @relation("TransferApprovedBy")
+  bookings            ResourceBooking[]
+  maintenanceRaised   MaintenanceRequest[]  @relation("MaintenanceRequester")
+  maintenanceApproved MaintenanceRequest[]  @relation("MaintenanceApprover")
+  auditAssignments    AuditAssignment[]
+  auditFindings       AuditFinding[]
+  notifications       Notification[]
+  activityLogs        ActivityLog[]
+
+  @@index([status])
+}
+
+model Department {
+  id           Int        @id @default(autoincrement())
+  name         String
+  description  String?
+  parentDeptId Int?
+  headId       Int?
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  parent    Department?  @relation("DeptHierarchy", fields: [parentDeptId], references: [id])
+  children  Department[] @relation("DeptHierarchy")
+  head      User?        @relation("DeptHead", fields: [headId], references: [id])
+  employees User[]       @relation("DeptEmployees")
+
+  @@index([status])
+  @@index([parentDeptId])
+}
+
+// ── Catalog ──────────────────────────────────────────
+
+model AssetCategory {
+  id           Int      @id @default(autoincrement())
+  name         String   @unique
+  description  String?
+  customFields String   @default("{}")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  assets Asset[]
+}
+
+model Asset {
+  id              Int            @id @default(autoincrement())
+  assetTag        String         @unique
+  name            String
+  categoryId      Int
+  serialNumber    String?        @unique
+  acquisitionDate DateTime?
+  acquisitionCost Float?
+  condition       AssetCondition @default(GOOD)
+  location        String?
+  isBookable      Boolean        @default(false)
+  status          AssetStatus    @default(AVAILABLE)
+  photoUrl        String?
+  notes           String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  category      AssetCategory        @relation(fields: [categoryId], references: [id])
+  history       AssetHistory[]
+  allocations   Allocation[]
+  transfers     TransferRequest[]
+  bookings      ResourceBooking[]
+  maintenance   MaintenanceRequest[]
+  auditFindings AuditFinding[]
+
+  @@index([status])
+  @@index([categoryId])
+  @@index([isBookable])
+}
+
+model AssetHistory {
+  id         Int          @id @default(autoincrement())
+  assetId    Int
+  fromStatus AssetStatus?
+  toStatus   AssetStatus
+  actorId    Int
+  reason     String?
+  createdAt  DateTime     @default(now())
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId])
+}
+
+// ── Holding ──────────────────────────────────────────
+
+model Allocation {
+  id                 Int              @id @default(autoincrement())
+  assetId            Int
+  holderId           Int?
+  holderDeptId       Int?
+  holderType         HolderType
+  expectedReturnDate DateTime?
+  allocatedDate      DateTime         @default(now())
+  returnedDate       DateTime?
+  returnCondition    AssetCondition?
+  returnNotes        String?
+  status             AllocationStatus @default(ACTIVE)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  asset  Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  holder User? @relation("AllocationHolder", fields: [holderId], references: [id])
+
+  @@index([assetId])
+  @@index([holderId])
+  @@index([status])
+  @@index([expectedReturnDate])
+  // No declarative partial-unique index in SQLite via Prisma —
+  // "only one ACTIVE allocation per asset" is enforced in the
+  // $transaction in lib/allocations.ts (Section 10 of the plan).
+}
+
+model TransferRequest {
+  id           Int            @id @default(autoincrement())
+  assetId      Int
+  fromHolderId Int?
+  toHolderId   Int
+  requestedBy  Int
+  reason       String?
+  status       TransferStatus @default(PENDING)
+  approvedBy   Int?
+  approvedAt   DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  asset     Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  requester User  @relation("TransferRequestedBy", fields: [requestedBy], references: [id])
+  approver  User? @relation("TransferApprovedBy", fields: [approvedBy], references: [id])
+
+  @@index([assetId])
+  @@index([status])
+}
+
+// ── Booking ──────────────────────────────────────────
+
+model ResourceBooking {
+  id           Int           @id @default(autoincrement())
+  resourceId   Int
+  bookerId     Int
+  startTime    DateTime
+  endTime      DateTime
+  purpose      String?
+  status       BookingStatus @default(UPCOMING)
+  reminderSent Boolean       @default(false)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  resource Asset @relation(fields: [resourceId], references: [id])
+  booker   User  @relation(fields: [bookerId], references: [id])
+
+  @@index([resourceId])
+  @@index([bookerId])
+  @@index([status])
+  @@index([startTime, endTime])
+  // Overlap prevention enforced in lib/bookings.ts, not a DB constraint
+  // (SQLite has no exclusion constraints) — see Section 10.
+}
+
+// ── Maintenance ──────────────────────────────────────
+
+model MaintenanceRequest {
+  id              Int                 @id @default(autoincrement())
+  assetId         Int
+  requesterId     Int
+  description     String
+  priority        MaintenancePriority @default(MEDIUM)
+  photoUrl        String?
+  status          MaintenanceStatus   @default(PENDING)
+  approvedBy      Int?
+  approvedAt      DateTime?
+  technicianId    Int?
+  assignedAt      DateTime?
+  resolutionNotes String?
+  resolvedAt      DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  asset     Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  requester User  @relation("MaintenanceRequester", fields: [requesterId], references: [id])
+  approver  User? @relation("MaintenanceApprover", fields: [approvedBy], references: [id])
+
+  @@index([assetId])
+  @@index([status])
+  @@index([requesterId])
+}
+
+// ── Audit ────────────────────────────────────────────
+
+model AuditCycle {
+  id        Int              @id @default(autoincrement())
+  name      String
+  scopeType AuditScopeType
+  scopeId   Int?
+  startDate DateTime
+  endDate   DateTime
+  status    AuditCycleStatus @default(ACTIVE)
+  createdBy Int
+  closedBy  Int?
+  closedAt  DateTime?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  assignments AuditAssignment[]
+  findings    AuditFinding[]
+}
+
+model AuditAssignment {
+  id         Int      @id @default(autoincrement())
+  cycleId    Int
+  auditorId  Int
+  assignedAt DateTime @default(now())
+
+  cycle   AuditCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  auditor User       @relation(fields: [auditorId], references: [id])
+
+  @@unique([cycleId, auditorId])
+}
+
+model AuditFinding {
+  id               Int             @id @default(autoincrement())
+  cycleId          Int
+  assetId          Int
+  auditorId        Int
+  status           FindingStatus
+  auditorNotes     String?
+  conditionBefore  AssetCondition?
+  conditionAfter   AssetCondition?
+  resolutionStatus String          @default("PENDING")
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  cycle   AuditCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  asset   Asset      @relation(fields: [assetId], references: [id])
+  auditor User       @relation(fields: [auditorId], references: [id])
+
+  @@index([cycleId])
+  @@index([assetId])
+  @@index([status])
+}
+
+// ── Activity ─────────────────────────────────────────
+
+model Notification {
+  id                  Int       @id @default(autoincrement())
+  userId              Int
+  type                String
+  subject             String?
+  message             String
+  relatedResourceType String?
+  relatedResourceId   Int?
+  isRead              Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+  readAt              DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+}
+
+model ActivityLog {
+  id           Int      @id @default(autoincrement())
+  actorId      Int?
+  action       String
+  resourceType String?
+  resourceId   Int?
+  changes      String?
+  timestamp    DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([actorId])
+  @@index([resourceType, resourceId])
+  @@index([timestamp])
+}
