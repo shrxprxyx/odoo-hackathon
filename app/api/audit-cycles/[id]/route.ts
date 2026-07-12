@@ -42,9 +42,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       : Promise.resolve(null),
   ]);
 
-  const findingByAsset = new Map(findings.map((f: { assetId: any; }) => [f.assetId, f]));
+  const findingByAsset = new Map(
+    findings.map((f: any) => [f.assetId, f])
+  );
 
-  const checklist = assets.map((asset: { id: unknown; }) => ({
+  const checklist = assets.map((asset: any) => ({
     asset,
     finding: findingByAsset.get(asset.id) ?? null,
   }));
