@@ -30,7 +30,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
 
   const adminId = Number(session.user.id);
 
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx: { auditFinding: { findMany: (arg0: { where: { cycleId: number; status: string; }; include: { asset: boolean; }; }) => any; count: (arg0: { where: { cycleId: number; status: string; }; }) => any; }; asset: { update: (arg0: { where: { id: any; }; data: { status: string; }; }) => any; }; assetHistory: { create: (arg0: { data: { assetId: any; fromStatus: any; toStatus: string; actorId: number; reason: string; }; }) => any; }; auditCycle: { update: (arg0: { where: { id: number; }; data: { status: string; closedBy: number; closedAt: Date; }; }) => any; }; }) => {
     const missingFindings = await tx.auditFinding.findMany({
       where: { cycleId, status: "MISSING" },
       include: { asset: true },
