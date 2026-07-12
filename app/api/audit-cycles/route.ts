@@ -1,102 +1,48 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { auditCycleSchema } from "@/lib/schemas";
-import { logActivity } from "@/lib/logActivity";
 import { getAssetsInScope } from "@/lib/audits";
 
-export async function GET(
-  req: NextRequest,
-  context: any
-) {
-  console.log("CONTEXT =", context);
-
-  const { id } = await context.params;
-
-  console.log("ID =", id);
-
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const cycleId = Number(id);
-
-  console.log("cycleId =", cycleId);
-
-  const cyclesWithCounts = await Promise.all(
-    cycles.map(async (cycle) => {
-      const assets = await getAssetsInScope(cycle.scopeType, cycle.scopeId);
-      const missingCount = cycle.findings.filter((f) => f.status === "MISSING").length;
-      const damagedCount = cycle.findings.filter((f) => f.status === "DAMAGED").length;
-      return {
-        id: cycle.id,
-        name: cycle.name,
-        scopeType: cycle.scopeType,
-        scopeId: cycle.scopeId,
-        startDate: cycle.startDate,
-        endDate: cycle.endDate,
-        status: cycle.status,
-        closedAt: cycle.closedAt,
-        assetCount: assets.length,
-        checkedCount: cycle.findings.length,
-        missingCount,
-        damagedCount,
-      };
-    })
-  );
-
-  return NextResponse.json({ cycles: cyclesWithCounts, departments });
-}
-
-export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session || session.user.role !== "ADMIN") {
+  if (!Number.isInteger(cycleId) || cycleId <= 0) {
     return NextResponse.json(
-      { error: "forbidden", message: "Only Admins can create audit cycles" },
-      { status: 403 }
-    );
-  }
-
-  const body = await req.json();
-  const parsed = auditCycleSchema.safeParse(body);
-  if (!parsed.success) {
-    const issue = parsed.error.issues[0];
-    return NextResponse.json(
-      { error: "validation_error", message: issue.message, field: issue.path[0] },
+      { error: "invalid_id", message: "Invalid audit cycle id" },
       { status: 400 }
     );
   }
 
-  const { name, scopeType, scopeId, startDate, endDate } = parsed.data;
-
-  if (endDate < startDate) {
-    return NextResponse.json(
-      { error: "validation_error", message: "End date must be on or after the start date", field: "endDate" },
-      { status: 400 }
-    );
-  }
-
-  if (scopeType === "DEPARTMENT" && !scopeId) {
-    return NextResponse.json(
-      { error: "validation_error", message: "Select a department for a department-scoped audit", field: "scopeId" },
-      { status: 400 }
-    );
-  }
-
-  const adminId = Number(session.user.id);
-
-  const cycle = await prisma.auditCycle.create({
-    data: {
-      name,
-      scopeType,
-      scopeId: scopeType === "DEPARTMENT" ? scopeId : null,
-      startDate,
-      endDate,
-      createdBy: adminId,
-    },
+  const cycle = await prisma.auditCycle.findUnique({
+    where: { id: cycleId },
   });
 
-  await logActivity("audit_cycle_created", {
-    actorId: adminId,
-    resourceType: "AuditCycle",
-    resourceId: cycle.id,
-  });
+  if (!cycle) {
+    return NextResponse.json(
+      { error: "not_found", message: "Audit cycle not found" },
+      { status: 404 }
+    );
+  }
 
-  return NextResponse.json({ cycle }, { status: 201 });
+  const [assets, findings, department] = await Promise.all([
+    getAssetsInScope(cycle.scopeType, cycle.scopeId),
+    prisma.auditFinding.findMany({ where: { cycleId } }),
+    cycle.scopeId
+      ? prisma.department.findUnique({
+          where: { id: cycle.scopeId },
+          select: { name: true },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  const findingByAsset = new Map(findings.map((f) => [f.assetId, f]));
+
+  const checklist = assets.map((asset) => ({
+    asset,
+    finding: findingByAsset.get(asset.id) ?? null,
+  }));
+
+  return NextResponse.json({
+    cycle: { ...cycle, departmentName: department?.name ?? null },
+    checklist,
+  });
 }
