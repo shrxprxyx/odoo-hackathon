@@ -5,18 +5,19 @@ import { auditCycleSchema } from "@/lib/schemas";
 import { logActivity } from "@/lib/logActivity";
 import { getAssetsInScope } from "@/lib/audits";
 
-export async function GET() {
-  const [cycles, departments] = await Promise.all([
-    prisma.auditCycle.findMany({
-      orderBy: { createdAt: "desc" },
-      include: { findings: { select: { status: true } } },
-    }),
-    prisma.department.findMany({
-      where: { status: "ACTIVE" },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-  ]);
+export async function GET(
+  req: NextRequest,
+  context: any
+) {
+  console.log("CONTEXT =", context);
+
+  const { id } = await context.params;
+
+  console.log("ID =", id);
+
+  const cycleId = Number(id);
+
+  console.log("cycleId =", cycleId);
 
   const cyclesWithCounts = await Promise.all(
     cycles.map(async (cycle) => {

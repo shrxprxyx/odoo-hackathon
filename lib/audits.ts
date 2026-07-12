@@ -3,6 +3,7 @@ import { prisma } from "./prisma";
 export type ScopedAsset = {
   id: number;
   assetTag: string;
+  
   name: string;
   location: string | null;
   condition: string;
