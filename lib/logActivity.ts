@@ -1,19 +1,20 @@
 import { prisma } from "@/lib/prisma";
 
-export async function logActivity(
-  actorId: number | null,
-  action: string,
-  resourceType?: string,
-  resourceId?: number,
-  changes?: Record<string, unknown>
-) {
+type LogActivityOptions = {
+  actorId?: number | null;
+  resourceType?: string;
+  resourceId?: number;
+  changes?: Record<string, unknown>;
+};
+
+export async function logActivity(action: string, options: LogActivityOptions = {}) {
   await prisma.activityLog.create({
     data: {
-      actorId,
+      actorId: options.actorId ?? null,
       action,
-      resourceType,
-      resourceId,
-      changes: changes ? JSON.stringify(changes) : null,
+      resourceType: options.resourceType,
+      resourceId: options.resourceId,
+      changes: options.changes ? JSON.stringify(options.changes) : null,
     },
   });
 }

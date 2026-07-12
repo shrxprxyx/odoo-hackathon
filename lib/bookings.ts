@@ -1,4 +1,4 @@
-import { prisma } from "./prisma";
+import { prisma, Prisma } from "./prisma";
 
 export async function getBookingsForResource(resourceId: number, date: Date) {
   const dayStart = new Date(date);
@@ -25,7 +25,7 @@ export async function createBooking(
   endTime: Date,
   purpose?: string
 ) {
-  return prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     // Re-check inside the transaction (not just before it) so two
     // simultaneous requests against the same resource can't both pass.
     const overlapping = await tx.resourceBooking.findFirst({

@@ -175,7 +175,7 @@ export default function BookingPage() {
             className="h-9 rounded-lg border border-border bg-background px-2 text-sm text-foreground"
           />
         </div>
-        <div className="flex flex-1 min-w-[160px] flex-col gap-1">
+        <div className="flex flex-1 min-w-40 flex-col gap-1">
           <label className="text-xs text-muted-foreground">Purpose</label>
           <input
             type="text"
