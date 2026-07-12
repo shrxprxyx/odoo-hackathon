@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Card, CardContent } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
+import { LoadingState } from "@/components/ui";
 
 type DashboardData = {
   available: number;
@@ -22,7 +25,7 @@ export default function DashboardPage() {
       .then(setData);
   }, []);
 
-  if (!data) return <p className="p-8">Loading...</p>;
+  if (!data) return <LoadingState message="Loading dashboard..." />;
 
   const cards = [
     { label: "Available", value: data.available },
@@ -34,32 +37,42 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div className="p-8 space-y-8">
-      <h1 className="text-2xl font-semibold">Today's Overview</h1>
+    <div className="space-y-6 sm:space-y-8">
+      <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
+        Today&apos;s Overview
+      </h1>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {cards.map((c) => (
-          <div key={c.label} className="border rounded-lg p-4">
-            <p className="text-sm text-gray-500">{c.label}</p>
-            <p className="text-3xl font-bold">{c.value}</p>
-          </div>
+          <Card key={c.label}>
+            <CardContent className="pt-6">
+              <p className="text-sm text-muted-foreground">{c.label}</p>
+              <p className="text-3xl font-bold text-foreground">{c.value}</p>
+            </CardContent>
+          </Card>
         ))}
       </div>
 
       {data.overdue > 0 && (
-        <div className="border border-red-400 bg-red-50 rounded-lg p-4 text-red-700">
+        <div className="border border-destructive/30 bg-destructive/10 rounded-lg p-4 text-destructive text-sm">
           {data.overdue} asset{data.overdue > 1 ? "s" : ""} overdue — flagged for follow-up
         </div>
       )}
 
-      <div className="flex gap-4">
-        <Link href="/assets" className="px-4 py-2 bg-black text-white rounded">
+      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+        <Link href="/assets" className={buttonVariants({ className: "w-full sm:w-auto justify-center" })}>
           + Register Asset
         </Link>
-        <Link href="/bookings" className="px-4 py-2 bg-black text-white rounded">
+        <Link
+          href="/bookings"
+          className={buttonVariants({ variant: "secondary", className: "w-full sm:w-auto justify-center" })}
+        >
           Book Resource
         </Link>
-        <Link href="/maintenance" className="px-4 py-2 bg-black text-white rounded">
+        <Link
+          href="/maintenance"
+          className={buttonVariants({ variant: "secondary", className: "w-full sm:w-auto justify-center" })}
+        >
           Raise Request
         </Link>
       </div>

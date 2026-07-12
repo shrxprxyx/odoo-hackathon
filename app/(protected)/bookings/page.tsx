@@ -88,7 +88,7 @@ export default function BookingPage() {
   const selectedResource = resources.find((r) => r.id === resourceId);
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 p-6">
+    <div className="mx-auto max-w-3xl space-y-6 p-4 sm:p-6">
       <div>
         <h1 className="text-xl font-semibold text-foreground">Resource Booking</h1>
         <p className="text-sm text-muted-foreground">
@@ -96,11 +96,11 @@ export default function BookingPage() {
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-col sm:flex-row gap-3">
         <select
           value={resourceId ?? ""}
           onChange={(e) => setResourceId(Number(e.target.value))}
-          className="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+          className="h-9 w-full sm:w-auto rounded-lg border border-border bg-background px-3 text-sm text-foreground"
         >
           {resources.map((r) => (
             <option key={r.id} value={r.id}>
@@ -112,7 +112,7 @@ export default function BookingPage() {
           type="date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
-          className="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+          className="h-9 w-full sm:w-auto rounded-lg border border-border bg-background px-3 text-sm text-foreground"
         />
       </div>
 
@@ -130,7 +130,7 @@ export default function BookingPage() {
                 b ? "bg-primary/15" : "bg-card"
               )}
             >
-              <span className="w-16 shrink-0 text-sm text-muted-foreground">
+              <span className="w-14 sm:w-16 shrink-0 text-sm text-muted-foreground">
                 {String(hour).padStart(2, "0")}:00
               </span>
               {b ? (
@@ -156,36 +156,40 @@ export default function BookingPage() {
         </div>
       )}
 
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-card p-4">
-        <div className="flex flex-col gap-1">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-3 rounded-lg border border-border bg-card p-4">
+        <div className="flex flex-col gap-1 w-full sm:w-auto">
           <label className="text-xs text-muted-foreground">Start</label>
           <input
             type="time"
             value={form.start}
             onChange={(e) => setForm({ ...form, start: e.target.value })}
-            className="h-9 rounded-lg border border-border bg-background px-2 text-sm text-foreground"
+            className="h-9 w-full sm:w-auto rounded-lg border border-border bg-background px-2 text-sm text-foreground"
           />
         </div>
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1 w-full sm:w-auto">
           <label className="text-xs text-muted-foreground">End</label>
           <input
             type="time"
             value={form.end}
             onChange={(e) => setForm({ ...form, end: e.target.value })}
-            className="h-9 rounded-lg border border-border bg-background px-2 text-sm text-foreground"
+            className="h-9 w-full sm:w-auto rounded-lg border border-border bg-background px-2 text-sm text-foreground"
           />
         </div>
-        <div className="flex flex-1 min-w-40 flex-col gap-1">
+        <div className="flex flex-1 min-w-0 sm:min-w-40 flex-col gap-1 w-full sm:w-auto">
           <label className="text-xs text-muted-foreground">Purpose</label>
           <input
             type="text"
             value={form.purpose}
             onChange={(e) => setForm({ ...form, purpose: e.target.value })}
             placeholder="Weekly sync"
-            className="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+            className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
           />
         </div>
-        <Button onClick={submitBooking} disabled={submitting || !resourceId}>
+        <Button
+          onClick={submitBooking}
+          disabled={submitting || !resourceId}
+          className="w-full sm:w-auto"
+        >
           {submitting ? "Booking…" : "Book"}
         </Button>
       </div>

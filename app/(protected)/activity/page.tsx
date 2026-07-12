@@ -1,10 +1,25 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {Card,  CardHeader,  CardTitle,  CardContent,  Table,TableHeader,  TableBody,  TableRow,  TableHeaderCell,  TableCell,  EmptyState,  LoadingState,  Badge,} from "@/components/ui";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHeaderCell,
+  TableCell,
+  EmptyState,
+  LoadingState,
+  Badge,
+} from "@/components/ui";
 import { activityApi, ApiError } from "@/lib/api-client";
 import { formatDateTime } from "@/lib/utils";
 import { Clock } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface ActivityLog {
   id: number;
@@ -38,6 +53,13 @@ const ACTION_LABELS: Record<string, { label: string; variant: string }> = {
   EMPLOYEE_PROMOTED: { label: "Employee Promoted", variant: "success" },
   DEPARTMENT_CREATED: { label: "Department Created", variant: "info" },
 };
+
+const FILTER_TABS = [
+  { value: "ALL", label: "All Activity" },
+  { value: "ALERTS", label: "Alerts" },
+  { value: "APPROVALS", label: "Approvals" },
+  { value: "BOOKINGS", label: "Bookings" },
+];
 
 export default function ActivityPage() {
   const [logs, setLogs] = useState<ActivityLog[]>([]);
@@ -90,33 +112,29 @@ export default function ActivityPage() {
         });
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-white mb-2">
+        <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">
           Activity & Notifications
         </h1>
-        <p className="text-slate-400">
+        <p className="text-sm sm:text-base text-muted-foreground">
           Complete audit log of all actions performed in the system
         </p>
       </div>
 
       {/* Filter Tabs */}
       <div className="flex gap-2 flex-wrap">
-        {[
-          { value: "ALL", label: "All Activity" },
-          { value: "ALERTS", label: "Alerts" },
-          { value: "APPROVALS", label: "Approvals" },
-          { value: "BOOKINGS", label: "Bookings" },
-        ].map((tab) => (
+        {FILTER_TABS.map((tab) => (
           <button
             key={tab.value}
             onClick={() => setFilter(tab.value)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={cn(
+              "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
               filter === tab.value
-                ? "bg-blue-600 text-white"
-                : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-            }`}
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            )}
           >
             {tab.label}
           </button>
@@ -130,7 +148,7 @@ export default function ActivityPage() {
         </CardHeader>
         <CardContent>
           {error && (
-            <div className="p-3 mb-4 rounded-lg bg-red-900/20 border border-red-700 text-red-200 text-sm">
+            <div className="p-3 mb-4 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-sm">
               {error}
             </div>
           )}
@@ -184,11 +202,11 @@ export default function ActivityPage() {
                         </TableCell>
                         <TableCell className="text-xs">
                           {log.resourceType && log.resourceId ? (
-                            <span className="text-slate-400">
+                            <span className="text-muted-foreground">
                               {log.resourceType} #{log.resourceId}
                             </span>
                           ) : (
-                            <span className="text-slate-500">—</span>
+                            <span className="text-muted-foreground/60">—</span>
                           )}
                         </TableCell>
                       </TableRow>
@@ -200,7 +218,7 @@ export default function ActivityPage() {
           )}
 
           {!loading && filteredLogs.length > 0 && (
-            <p className="text-xs text-slate-400 mt-4">
+            <p className="text-xs text-muted-foreground mt-4">
               Showing {filteredLogs.length} of {logs.length} activities
             </p>
           )}
@@ -208,18 +226,18 @@ export default function ActivityPage() {
       </Card>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <Card>
           <CardContent className="pt-6">
-            <p className="text-slate-400 text-sm mb-2">Total Activities</p>
-            <p className="text-3xl font-bold text-white">{logs.length}</p>
+            <p className="text-muted-foreground text-sm mb-2">Total Activities</p>
+            <p className="text-3xl font-bold text-foreground">{logs.length}</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardContent className="pt-6">
-            <p className="text-slate-400 text-sm mb-2">Approvals</p>
-            <p className="text-3xl font-bold text-green-400">
+            <p className="text-muted-foreground text-sm mb-2">Approvals</p>
+            <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">
               {logs.filter((l) => l.action.includes("APPROVED")).length}
             </p>
           </CardContent>
@@ -227,8 +245,8 @@ export default function ActivityPage() {
 
         <Card>
           <CardContent className="pt-6">
-            <p className="text-slate-400 text-sm mb-2">Alerts</p>
-            <p className="text-3xl font-bold text-yellow-400">
+            <p className="text-muted-foreground text-sm mb-2">Alerts</p>
+            <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">
               {logs.filter((l) =>
                 [
                   "TRANSFER_REJECTED",
