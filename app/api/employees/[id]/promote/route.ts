@@ -3,7 +3,8 @@ import { promoteSchema } from "@/lib/schemas";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await auth();
 
   // authz check — independent of the Zod shape check below
@@ -14,7 +15,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     );
   }
 
-  const employeeId = Number(params.id);
+  const employeeId = Number(id);
   if (!Number.isInteger(employeeId) || employeeId <= 0) {
     return NextResponse.json({ error: "invalid_id", message: "Invalid employee id" }, { status: 400 });
   }

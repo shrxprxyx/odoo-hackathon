@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { logActivity } from "@/lib/logActivity";
 
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const session = await auth();
 
   if (!session || session.user.role !== "ADMIN") {
@@ -19,7 +21,6 @@ export async function POST(
     );
   }
 
-  const { id } = await params;
   const cycleId = Number(id);
 
   if (!Number.isInteger(cycleId) || cycleId <= 0) {
@@ -55,59 +56,61 @@ export async function POST(
 
   const adminId = Number(session.user.id);
 
-  const result = await prisma.$transaction(async (tx: { auditFinding: { findMany: (arg0: { where: { cycleId: number; status: string; }; include: { asset: boolean; }; }) => any; count: (arg0: { where: { cycleId: number; status: string; }; }) => any; }; asset: { update: (arg0: { where: { id: any; }; data: { status: string; }; }) => any; }; assetHistory: { create: (arg0: { data: { assetId: any; fromStatus: any; toStatus: string; actorId: number; reason: string; }; }) => any; }; auditCycle: { update: (arg0: { where: { id: number; }; data: { status: string; closedBy: number; closedAt: Date; }; }) => any; }; }) => {
-    const missingFindings = await tx.auditFinding.findMany({
-      where: {
-        cycleId,
-        status: "MISSING",
-      },
-      include: {
-        asset: true,
-      },
-    });
+  const result = await prisma.$transaction(
+    async (tx: Prisma.TransactionClient) => {
+      const missingFindings = await tx.auditFinding.findMany({
+        where: {
+          cycleId,
+          status: "MISSING",
+        },
+        include: {
+          asset: true,
+        },
+      });
 
-    for (const finding of missingFindings) {
-      if (finding.asset.status !== "LOST") {
-        await tx.asset.update({
-          where: { id: finding.assetId },
-          data: { status: "LOST" },
-        });
+      for (const finding of missingFindings) {
+        if (finding.asset.status !== "LOST") {
+          await tx.asset.update({
+            where: { id: finding.assetId },
+            data: { status: "LOST" },
+          });
 
-        await tx.assetHistory.create({
-          data: {
-            assetId: finding.assetId,
-            fromStatus: finding.asset.status,
-            toStatus: "LOST",
-            actorId: adminId,
-            reason: `Flagged missing during audit cycle "${cycle.name}"`,
-          },
-        });
+          await tx.assetHistory.create({
+            data: {
+              assetId: finding.assetId,
+              fromStatus: finding.asset.status,
+              toStatus: "LOST",
+              actorId: adminId,
+              reason: `Flagged missing during audit cycle "${cycle.name}"`,
+            },
+          });
+        }
       }
+
+      const damagedCount = await tx.auditFinding.count({
+        where: {
+          cycleId,
+          status: "DAMAGED",
+        },
+      });
+
+      const closed = await tx.auditCycle.update({
+        where: { id: cycleId },
+        data: {
+          status: "CLOSED",
+          closedBy: adminId,
+          closedAt: new Date(),
+        },
+      });
+
+      return {
+        cycle: closed,
+        discrepancyCount: missingFindings.length + damagedCount,
+        missingCount: missingFindings.length,
+        damagedCount,
+      };
     }
-
-    const damagedCount = await tx.auditFinding.count({
-      where: {
-        cycleId,
-        status: "DAMAGED",
-      },
-    });
-
-    const closed = await tx.auditCycle.update({
-      where: { id: cycleId },
-      data: {
-        status: "CLOSED",
-        closedBy: adminId,
-        closedAt: new Date(),
-      },
-    });
-
-    return {
-      cycle: closed,
-      discrepancyCount: missingFindings.length + damagedCount,
-      missingCount: missingFindings.length,
-      damagedCount,
-    };
-  });
+  );
 
   await logActivity("audit_cycle_closed", {
     actorId: adminId,

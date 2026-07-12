@@ -57,7 +57,7 @@ interface Allocation {
   holderId: number | null;
   holderDeptId: number | null;
   holderType: "EMPLOYEE" | "DEPARTMENT";
-  status: "ACTIVE" | "RETURNED";
+  status: "ACTIVE" | "RETURNED" | "OVERDUE";
   allocatedDate: Date;
   expectedReturnDate?: Date | null;
   returnedDate?: Date | null;
@@ -89,8 +89,8 @@ export async function allocateAsset(
   holderId: number | null,
   holderDeptId: number | null,
   holderType: "EMPLOYEE" | "DEPARTMENT",
-  expectedReturnDate?: Date,
-  actorId?: number
+  expectedReturnDate: Date | undefined,
+  actorId: number
 ): Promise<AllocationResult> {
   try {
     return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -151,6 +151,16 @@ export async function allocateAsset(
         },
       });
 
+      await tx.assetHistory.create({
+        data: {
+          assetId,
+          fromStatus: asset.status,
+          toStatus: "ALLOCATED",
+          actorId,
+          reason: "Asset allocated",
+        },
+      });
+
       return {
         success: true,
         allocation,
@@ -170,10 +180,10 @@ export async function allocateAsset(
 
 export async function transferAsset(
   assetId: number,
-  fromHolderId: number,
+  fromHolderId: number | undefined,
   toHolderId: number,
-  reason?: string,
-  actorId?: number
+  reason: string | undefined,
+  actorId: number
 ): Promise<AllocationResult> {
   try {
     return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -191,12 +201,17 @@ export async function transferAsset(
         };
       }
 
-      if (current.holderId !== fromHolderId) {
+      // fromHolderId is optional on the wire (the frontend may not always know
+      // the current holder up front) — when it IS supplied, verify it matches;
+      // when it's omitted, trust the DB's current holder instead of failing.
+      if (fromHolderId !== undefined && current.holderId !== fromHolderId) {
         return {
           success: false,
           error: "Holder mismatch",
         };
       }
+
+      const asset = await tx.asset.findUnique({ where: { id: assetId } });
 
       await tx.allocation.update({
         where: {
@@ -221,6 +236,16 @@ export async function transferAsset(
         },
       });
 
+      await tx.assetHistory.create({
+        data: {
+          assetId,
+          fromStatus: asset?.status,
+          toStatus: "ALLOCATED",
+          actorId,
+          reason: reason ? `Transferred: ${reason}` : "Transferred to new holder",
+        },
+      });
+
       return {
         success: true,
         allocation,
@@ -241,8 +266,8 @@ export async function transferAsset(
 export async function returnAsset(
   allocationId: number,
   condition: "GOOD" | "FAIR" | "POOR",
-  returnNotes?: string,
-  actorId?: number
+  returnNotes: string | undefined,
+  actorId: number
 ): Promise<AllocationResult> {
   try {
     return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -284,6 +309,16 @@ export async function returnAsset(
         },
         data: {
           status: "AVAILABLE",
+        },
+      });
+
+      await tx.assetHistory.create({
+        data: {
+          assetId: allocation.assetId,
+          fromStatus: "ALLOCATED",
+          toStatus: "AVAILABLE",
+          actorId,
+          reason: returnNotes ? `Returned: ${returnNotes}` : "Returned",
         },
       });
 
