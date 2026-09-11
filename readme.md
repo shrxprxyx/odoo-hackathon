@@ -2,7 +2,7 @@
 
 **Enterprise Asset & Resource Management System** — a centralized platform for tracking, allocating, and maintaining physical assets and shared resources (equipment, furniture, vehicles, rooms) across any organization.
 
-Built for [Hackathon Name] in a 6-hour build window — a single self-contained Next.js app, no Docker, no separate backend service.
+Built for Odoo Hackathon in a 6-hour build window — a single self-contained Next.js app, no Docker, no separate backend service.
 
 ---
 
@@ -17,14 +17,14 @@ AssetFlow runs as **one Next.js 15 application** — client, server, and API all
 ```mermaid
 flowchart TB
 
-subgraph USERS["👥 Users"]
+subgraph USERS["Users"]
 A1[Administrator]
 A2[Asset Manager]
 A3[Department Head]
 A4[Employee]
 end
 
-subgraph APP["🖥️ Next.js 15 App Router — single process"]
+subgraph APP["Next.js 15 App Router — single process"]
   subgraph PAGES["Pages / Client Components"]
     Dashboard
     OrgSetup["Organization Setup"]
@@ -43,7 +43,7 @@ subgraph APP["🖥️ Next.js 15 App Router — single process"]
   end
 end
 
-subgraph STORAGE["💾 Persistence"]
+subgraph STORAGE["Persistence"]
   Prisma
   SQLite[(SQLite — dev.db)]
 end
